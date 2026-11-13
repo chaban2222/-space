@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#070b1a">
+<title>Космос для Сарварика</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="bg"></canvas>
+<nav id="nav"></nav>
+<main id="main">
+  <section id="v-map" class="view">
+    <canvas id="map"></canvas>
+    <div class="map-top">
+      <div style="color:var(--sun);font-size:16px;font-weight:600;text-shadow:0 2px 8px #000">🚀 Космос для Сарварика</div>
+      <h1>Солнечная система</h1>
+      <div id="taskChip" class="chip"></div>
+    </div>
+    <div class="map-ctrl">
+      <button class="rb" id="zIn" aria-label="Приблизить">＋</button>
+      <button class="rb" id="zOut" aria-label="Отдалить">－</button>
+      <button class="rb" id="zFit" aria-label="Показать всё">⤢</button>
+    </div>
+    <div class="map-note">Нажми на планету или Солнце. Двигай карту пальцем, приближай двумя пальцами.<br><small>Размеры планет, расстояния и скорости показаны условно, не в масштабе.</small></div>
+  </section>
+  <section id="v-page" class="view scroll"></section>
+  <section id="v-planet" class="view scroll"></section>
+  <section id="v-progress" class="view scroll"></section>
+</main>
+<div id="topbtns">
+  <button class="rb" id="pauseBtn" aria-label="Пауза анимаций">⏸</button>
+</div>
+<div id="quiz" class="overlay hidden"></div>
+<div id="toast" class="toast"></div>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

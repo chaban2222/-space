@@ -1,0 +1,7 @@
+{
+  "appId": "uz.kids.kosmos",
+  "appName": "Космос для Сарварика",
+  "webDir": "www",
+  "backgroundColor": "#070b1a",
+  "android": { "allowMixedContent": false, "webContentsDebuggingEnabled": false }
+}
