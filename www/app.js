@@ -63,19 +63,20 @@ function bgInit(){const cv=BG.cv,d=DPR(),W=Math.max(1,innerWidth),H=Math.max(1,i
  [[.2,.25,'60,40,120'],[.8,.7,'20,60,130'],[.6,.15,'90,30,90']].forEach(([x,y,col])=>{const gr=g.createRadialGradient(x*W,y*H,0,x*W,y*H,Math.max(W,H)*.45);gr.addColorStop(0,`rgba(${col},.22)`);gr.addColorStop(1,`rgba(${col},0)`);g.fillStyle=gr;g.fillRect(0,0,W,H);});
  BG.neb=nb;BG.dirty=true;}
 function bgDraw(){const c=BG.cv.getContext('2d'),d=DPR();c.setTransform(d,0,0,d,0,0);c.fillStyle='#070b1a';c.fillRect(0,0,innerWidth,innerHeight);c.drawImage(BG.neb,0,0);
- for(const s of BG.stars){const a=S.paused||S.lite?s.a:s.a*(.7+.3*Math.sin(BG.t*s.sp+s.ph));c.fillStyle=`rgba(${s.c},${a})`;c.beginPath();c.arc(s.x,s.y,s.s,0,7);c.fill();}}
+ for(const s of BG.stars){const a=s.a;c.fillStyle=`rgba(${s.c},${a})`;c.beginPath();c.arc(s.x,s.y,s.s,0,7);c.fill();}}
 
 // ---------- живые объекты (анимации) ----------
 let LIVE=[];const MAPO={};
 function visible(el){const r=el.getBoundingClientRect();return r.bottom>0&&r.top<innerHeight&&r.width>0;}
-let last=performance.now(),bgAcc=0;
+let last=performance.now(),acc=0;
 function loop(now){requestAnimationFrame(loop);try{frame(now);}catch(e){console.error(e);}}
-function frame(now){const dt=Math.min(.05,(now-last)/1000);last=now;
- if(!S.paused&&!S.lite){BG.t+=dt;bgAcc+=dt;if(bgAcc>.07){bgAcc=0;BG.dirty=true;}}
+// Фон неподвижный (рисуется только при изменении размера), анимации — до 30 кадров/с: меньше нагрузка и расход батареи.
+function frame(now){acc+=Math.max(0,(now-last)/1000);last=now;
  if(BG.dirty){bgDraw();BG.dirty=false;}
+ if(acc<.03)return;const dt=Math.min(.1,acc);acc=0;
  const list=cur==='map'?[MAPO]:LIVE;
- for(const o of list){if(!visible(o.el))continue;if(o.onVis)o.onVis();if(!o.draw||(o.cv&&!o.c))continue;
-  if(!S.paused&&o.tick){o.tick(dt);o.dirty=true;}if(o.dirty){o.dirty=false;o.draw();}}}
+ for(const o of list){if(!visible(o.el))continue;if(o.onVis)o.onVis();if(o.cv&&!o.c&&o.size)o.size();if(!o.draw||(o.cv&&!o.c))continue;
+  if((!S.paused||o.always)&&o.tick){o.tick(dt);o.dirty=true;}if(o.dirty){o.dirty=false;o.draw();}}}
 
 // ---------- карта Солнечной системы ----------
 const ORB=[0,70,100,135,175,250,330,405,470],PR=[38,7,10,10.5,8,22,19,14,14],YR=[1,.24,.62,1,1.88,11.86,29.46,84,164.8];
@@ -95,10 +96,10 @@ Object.assign(MAPO,{el:$('#v-map'),dirty:true,
   drawSun(c,0,0,PR[0]);
   const lab=[];
   for(let i=1;i<9;i++){const [x,y]=pos(i),r=Math.max(PR[i],4/s),l=Math.hypot(x,y);drawPlanet(c,PLANETS[i],x,y,r,-x/l,-y/l);lab.push([x,y+r*(PLANETS[i].ring?1.4:1),PLANETS[i].name,S.planets[PLANETS[i].id]]);}
-  c.setTransform(d,0,0,d,0,0);c.font='600 15px Roboto,sans-serif';c.textAlign='center';c.shadowColor='#000';c.shadowBlur=4;
+  c.setTransform(d,0,0,d,0,0);c.font='600 17px Roboto,sans-serif';c.textAlign='center';c.shadowColor='#000';c.shadowBlur=4;
   for(const [x,y,n,seen] of lab){c.fillStyle=seen?'#cfe3ff':'#ffffff';c.fillText(n+(seen?' ✓':''),V.x+x*s,V.y+y*s+17);}
   c.fillStyle='#ffe9a8';c.fillText('Солнце',V.x,V.y+PR[0]*s+20);
-  if(s>.9){c.fillStyle='rgba(220,210,190,.7)';c.font='13px Roboto,sans-serif';c.fillText('пояс астероидов',V.x,V.y-216*.92*s);}
+  if(s>.9){c.fillStyle='rgba(220,210,190,.7)';c.font='15px Roboto,sans-serif';c.fillText('пояс астероидов',V.x,V.y-216*.92*s);}
   c.shadowBlur=0;}});
 function mapTap(sx,sy){let best=-1,bd=1e9;for(let i=0;i<9;i++){const [x,y]=i?pos(i):[0,0];const dx=V.x+x*V.s-sx,dy=V.y+y*V.s-sy,dd=Math.hypot(dx,dy),hit=Math.max(PR[i]*V.s,24)+10;if(dd<hit&&dd<bd){bd=dd;best=i;}}
  if(best>=0)go('planet',PLANETS[best].id);}
@@ -114,7 +115,7 @@ function mapInput(){const cv=$('#map'),pts=new Map();let moved=0,t0=0,pinch=null
  $('#zIn').onclick=()=>zoomAt(MW/2,MH/2,1.4);$('#zOut').onclick=()=>zoomAt(MW/2,MH/2,1/1.4);$('#zFit').onclick=mapFit;}
 
 // ---------- навигация ----------
-const NAV=[['map','☀️','Карта'],...SECTIONS.map(s=>[s.id,s.icon,s.title.replace('Исследование космоса','Полёты').replace('Наш космический адрес','Адрес').replace('Солнечная система','Планеты').replace('Звёзды и галактики','Звёзды').replace('Другие объекты','Объекты')]),['progress','🏅','Прогресс']];
+const NAV=[['map','☀️','Карта'],...SECTIONS.map(s=>[s.id,s.icon,s.nav||s.title]),['progress','🏅','Прогресс']];
 let cur='map',hist=[];
 function go(v,arg,push=true){if(push)hist.push([cur,curArg]);render(v,arg);}
 let curArg=null;
@@ -132,12 +133,12 @@ function buildNav(){const n=$('#nav');NAV.forEach(([id,i,t])=>{const b=h('button
 function renderSection(id){const s=SECTIONS.find(x=>x.id===id),v=$('#v-page');v.innerHTML='';v.scrollTop=0;v.classList.add('on');const w=h('div','wrap');v.appendChild(w);
  w.appendChild(h('h2',null,s.icon+' '+s.title));
  for(const b of s.blocks){
-  if(b.demo){w.appendChild(DEMOS[b.demo]());continue;}
+  if(b.demo){w.appendChild(DEMOS[b.demo](b));continue;}
   if(b.cards){const g=h('div','cards');b.cards.forEach(([e,t,d])=>g.appendChild(h('div','card',`<div class="e">${e}</div><b>${t}</b><span>${d}</span>`)));w.appendChild(g);continue;}
   if(b.timeline){const t=h('div','tl');b.timeline.forEach(([y,n,d])=>t.appendChild(h('div',null,`<span class="y">${y}</span><b>${n}</b><br>${d}`)));w.appendChild(t);continue;}
   if(b.h)w.appendChild(h('h3',null,b.h));w.appendChild(h('div','blk',`<p>${b.p}</p>`));}
- const end=h('div','blk');end.innerHTML=`<h3 style="margin-top:4px">🧠 Проверь себя</h3><p>${S.quizzes[id]?'Викторина уже пройдена ⭐ — можно пройти ещё раз.':'Небольшая викторина: '+s.quiz.length+' вопроса. Ошибаться не страшно — можно попробовать снова.'}</p>`;
- const r=h('div','row');const qb=h('button','btn gold','Начать викторину');qb.onclick=()=>openQuiz(id);r.appendChild(qb);
+ const end=h('div','blk');end.innerHTML=s.quiz?`<h3 style="margin-top:4px">🧠 Проверь себя</h3><p>${S.quizzes[id]?'Викторина уже пройдена ⭐ — можно пройти ещё раз.':'Небольшая викторина: '+s.quiz.length+(s.quiz.length>4?' вопросов':' вопроса')+'. Ошибаться не страшно — можно попробовать снова.'}</p>`:'<p>Это последний раздел. Загляни в «Прогресс» — какие задания ещё остались?</p>';
+ const r=h('div','row');if(s.quiz){const qb=h('button','btn gold','Начать викторину');qb.onclick=()=>openQuiz(id);r.appendChild(qb);}
  const i=SECTIONS.indexOf(s),nx=SECTIONS[i+1];if(nx){const nb=h('button','btn sec',`Дальше: ${nx.icon} ${nx.title}`);nb.onclick=()=>go('page',nx.id);r.appendChild(nb);}
  end.appendChild(r);w.appendChild(end);
  const chk=()=>{if(!S.sections[id]&&v.scrollTop+v.clientHeight>=v.scrollHeight-250){S.sections[id]=1;save();toast('📖 Раздел «'+s.title+'» изучен!');}};v.onscroll=chk;setTimeout(chk,500);}
@@ -181,12 +182,12 @@ const DEMOS={
   function upd(){o.info.innerHTML=`<b>${T[o.step][0]}</b><br>${T[o.step][1]}<br><small style="color:var(--muted)">Твой космический адрес: Узбекистан → Земля → Солнечная система → Млечный Путь → Вселенная</small>`;dots.innerHTML=T.map((_,i)=>`<i class="${i===o.step?'on':''}"></i>`).join('');prev.disabled=o.step===0;next.disabled=o.step===3;prev.style.opacity=o.step?1:.4;next.style.opacity=o.step<3?1:.4;}
   upd();
   const scene=(c,n,W,H)=>{const cx=W/2,cy=H/2,m=Math.min(W,H);
-   if(n===0){drawPlanet(c,P('earth'),cx,cy,m*.36,-.7,-.4);c.fillStyle='#ffcf5a';c.beginPath();c.arc(cx+m*.06,cy-m*.13,6,0,7);c.fill();c.font='600 17px Roboto';c.textAlign='left';c.fillText('Ты здесь',cx+m*.06+12,cy-m*.13+6);}
-   if(n===1){drawSun(c,cx,cy,m*.07);for(let i=1;i<9;i++){const R=m*.1+i*m*.045,a=i*1.7+(o.ga*.4/Math.sqrt(YR[i]));c.strokeStyle='rgba(150,180,255,.25)';c.lineWidth=1;c.beginPath();c.ellipse(cx,cy,R*1.25,R,0,0,7);c.stroke();drawPlanet(c,PLANETS[i],cx+Math.cos(a)*R*1.25,cy+Math.sin(a)*R,i>4?7:4.5);if(i===3){const x=cx+Math.cos(a)*R*1.25,y=cy+Math.sin(a)*R;c.strokeStyle='#ffcf5a';c.lineWidth=2;c.beginPath();c.arc(x,y,11,0,7);c.stroke();c.fillStyle='#ffcf5a';c.font='600 16px Roboto';c.textAlign='center';c.fillText('Земля',x,y-16);}}}
+   if(n===0){drawPlanet(c,P('earth'),cx,cy,m*.36,-.7,-.4);c.fillStyle='#ffcf5a';c.beginPath();c.arc(cx+m*.06,cy-m*.13,6,0,7);c.fill();c.font='600 19px Roboto';c.textAlign='left';c.fillText('Ты здесь',cx+m*.06+12,cy-m*.13+6);}
+   if(n===1){drawSun(c,cx,cy,m*.07);for(let i=1;i<9;i++){const R=m*.1+i*m*.045,a=i*1.7+(o.ga*.4/Math.sqrt(YR[i]));c.strokeStyle='rgba(150,180,255,.25)';c.lineWidth=1;c.beginPath();c.ellipse(cx,cy,R*1.25,R,0,0,7);c.stroke();drawPlanet(c,PLANETS[i],cx+Math.cos(a)*R*1.25,cy+Math.sin(a)*R,i>4?7:4.5);if(i===3){const x=cx+Math.cos(a)*R*1.25,y=cy+Math.sin(a)*R;c.strokeStyle='#ffcf5a';c.lineWidth=2;c.beginPath();c.arc(x,y,11,0,7);c.stroke();c.fillStyle='#ffcf5a';c.font='600 18px Roboto';c.textAlign='center';c.fillText('Земля',x,y-16);}}}
    if(n===2){c.save();c.translate(cx,cy);c.scale(1,.62);c.rotate(o.ga*.05);const g=galaxyTex(),z=m*1.05;c.drawImage(g,-z/2,-z/2,z,z);const sa=2.3,sr=z*.3;const sx=Math.cos(sa)*sr,sy=Math.sin(sa)*sr;c.restore();
-    const px=cx+(Math.cos(sa+o.ga*.05)*sr),py=cy+Math.sin(sa+o.ga*.05)*sr*.62;c.strokeStyle='#ffcf5a';c.lineWidth=2;c.beginPath();c.arc(px,py,9,0,7);c.stroke();c.fillStyle='#ffcf5a';c.font='600 16px Roboto';c.textAlign='center';c.fillText('Солнце примерно здесь',px,py-16);}
+    const px=cx+(Math.cos(sa+o.ga*.05)*sr),py=cy+Math.sin(sa+o.ga*.05)*sr*.62;c.strokeStyle='#ffcf5a';c.lineWidth=2;c.beginPath();c.arc(px,py,9,0,7);c.stroke();c.fillStyle='#ffcf5a';c.font='600 18px Roboto';c.textAlign='center';c.fillText('Солнце примерно здесь',px,py-16);}
    if(n===3){const r=rng('uni');for(let i=0;i<70;i++){const x=r()*W,y=r()*H,s=4+r()*14,a=r()*3;if(Math.hypot(x-cx,y-cy)<60)continue;c.save();c.translate(x,y);c.rotate(a);const gr=c.createRadialGradient(0,0,0,0,0,s);const col=r()<.5?'255,230,200':'190,210,255';gr.addColorStop(0,`rgba(${col},.9)`);gr.addColorStop(1,`rgba(${col},0)`);c.fillStyle=gr;c.scale(1,.3+r()*.6);c.beginPath();c.arc(0,0,s,0,7);c.fill();c.restore();}
-    c.save();c.translate(cx,cy);c.scale(1,.6);c.drawImage(galaxyTex(),-30,-30,60,60);c.restore();c.strokeStyle='#ffcf5a';c.lineWidth=2;c.beginPath();c.arc(cx,cy,34,0,7);c.stroke();c.fillStyle='#ffcf5a';c.font='600 16px Roboto';c.textAlign='center';c.fillText('Млечный Путь',cx,cy-42);}};
+    c.save();c.translate(cx,cy);c.scale(1,.6);c.drawImage(galaxyTex(),-30,-30,60,60);c.restore();c.strokeStyle='#ffcf5a';c.lineWidth=2;c.beginPath();c.arc(cx,cy,34,0,7);c.stroke();c.fillStyle='#ffcf5a';c.font='600 18px Roboto';c.textAlign='center';c.fillText('Млечный Путь',cx,cy-42);}};
   o.tick=dt=>{o.ga+=dt;if(o.t<1)o.t=Math.min(1,o.t+dt*1.4);};
   o.draw=()=>{const {c,w:W,h:H}=o;c.clearRect(0,0,W,H);const e=o.t<1?o.t*o.t*(3-2*o.t):1;
    if(o.t<1&&o.from!=null){const so=o.dir>0?1-e*.85:1+e*2,sn=o.dir>0?3-2*e:.15+.85*e;
@@ -200,10 +201,10 @@ const DEMOS={
  planetGrid(){const g=h('div','pgrid');PLANETS.forEach(p=>{const b=h('button',S.planets[p.id]?'seen':'');const cv=h('canvas');b.append(cv,document.createTextNode(p.name));b.onclick=()=>go('planet',p.id);g.appendChild(b);
    requestAnimationFrame(()=>{const d=DPR();cv.width=cv.height=72*d;const c=cv.getContext('2d');c.setTransform(d,0,0,d,0,0);drawPlanet(c,p,36,36,p.ring?15:p.id==='sun'?20:28,-.8,-.4);});});return g;},
  sizes(){const box=h('div','demo'),sc=h('div','sizes'),cv=h('canvas');sc.appendChild(cv);box.appendChild(sc);box.appendChild(h('div','info','Размеры планет и Солнца — <b>в одном масштабе</b>. Расстояния между ними — <b>не в масштабе</b>. Листай вправо →'));
-  const k=230/142984,gap=40,H=320,list=PLANETS.slice(1);let W=90;list.forEach(p=>W+=p.d*k+gap+(p.ring?p.d*k*.7:0));W+=30;
+  const k=230/142984,gap=74,H=320,list=PLANETS.slice(1);let W=90;list.forEach(p=>W+=p.d*k+gap+(p.ring?p.d*k*.7:0));W+=30;
   const d=DPR();cv.width=W*d;cv.height=H*d;cv.style.width=W+'px';cv.style.height=H+'px';const c=cv.getContext('2d');c.setTransform(d,0,0,d,0,0);
-  const sr=1392700*k/2,cy=H/2-10;drawSun(c,70-sr,cy,sr,0);c.fillStyle='#2a1a00';c.font='600 15px Roboto';c.save();c.translate(36,cy);c.rotate(-Math.PI/2);c.textAlign='center';c.fillText('Край Солнца',0,0);c.restore();
-  let x=90+gap/2;c.textAlign='center';list.forEach(p=>{const r=p.d*k/2,ex=p.ring?r*.7:0;x+=ex+r;drawPlanet(c,p,x,cy,r,-1,-.2);c.fillStyle='#fff';c.font='600 15px Roboto';c.fillText(p.name,x,cy+Math.max(r,20)+28);c.fillStyle='#a9b4d6';c.font='13px Roboto';c.fillText(p.d.toLocaleString('ru')+' км',x,cy+Math.max(r,20)+46);x+=r+ex+gap;});
+  const sr=1392700*k/2,cy=H/2-10;drawSun(c,70-sr,cy,sr,0);c.fillStyle='#2a1a00';c.font='600 17px Roboto';c.save();c.translate(36,cy);c.rotate(-Math.PI/2);c.textAlign='center';c.fillText('Край Солнца',0,0);c.restore();
+  let x=90+gap/2;c.textAlign='center';list.forEach(p=>{const r=p.d*k/2,ex=p.ring?r*.7:0;x+=ex+r;drawPlanet(c,p,x,cy,r,-1,-.2);c.fillStyle='#fff';c.font='600 17px Roboto';c.fillText(p.name,x,cy+Math.max(r,20)+28);c.fillStyle='#a9b4d6';c.font='15px Roboto';c.fillText(p.d.toLocaleString('ru')+' км',x,cy+Math.max(r,20)+46);x+=r+ex+gap;});
   LIVE.push({el:box,onVis(){doneTask('t_sizes');}});return box;},
  daynight(){const o=demoBox(.5,380);o.m=Math.PI;
   const sl=slider(0,24,.1,12,v=>{o.m=Math.PI+(v-12)/24*2*Math.PI;o.dirty=true;});o.ctrl.append(playBtn(o),h('span',null,'Время:'),sl);
@@ -213,8 +214,8 @@ const DEMOS={
    c.strokeStyle=c.fillStyle='rgba(255,210,110,.7)';c.lineWidth=2;for(let i=-2;i<=2;i++)arrow(c,W*.16,ey+i*r*.4,ex-r-14,ey+i*r*.4);
    c.save();c.translate(ex,ey);c.rotate(-o.m+Math.PI);c.beginPath();c.arc(0,0,r,0,7);c.clip();c.drawImage(tex(P('earth')),-r,-r,2*r,2*r);c.restore();
    const ng=c.createLinearGradient(ex-r*.15,0,ex+r*.15,0);ng.addColorStop(0,'rgba(0,0,20,0)');ng.addColorStop(1,'rgba(0,0,20,.78)');c.fillStyle=ng;c.beginPath();c.arc(ex,ey,r,0,7);c.fill();
-   const mx=ex+Math.cos(o.m)*r*.78,my=ey-Math.sin(o.m)*r*.78;c.fillStyle='#ffcf5a';c.strokeStyle='#000';c.lineWidth=2;c.beginPath();c.arc(mx,my,8,0,7);c.fill();c.stroke();c.font='600 16px Roboto';c.textAlign='center';c.lineWidth=4;c.strokeText('Ташкент',mx,my-14);c.fillText('Ташкент',mx,my-14);
-   c.fillStyle='#fff';c.font='15px Roboto';c.fillText('ДЕНЬ',ex-r*.5,ey+r+22);c.fillText('НОЧЬ',ex+r*.5,ey+r+22);
+   const mx=ex+Math.cos(o.m)*r*.78,my=ey-Math.sin(o.m)*r*.78;c.fillStyle='#ffcf5a';c.strokeStyle='#000';c.lineWidth=2;c.beginPath();c.arc(mx,my,8,0,7);c.fill();c.stroke();c.font='600 18px Roboto';c.textAlign='center';c.lineWidth=4;c.strokeText('Ташкент',mx,my-14);c.fillText('Ташкент',mx,my-14);
+   c.fillStyle='#fff';c.font='17px Roboto';c.fillText('ДЕНЬ',ex-r*.5,ey+r+22);c.fillText('НОЧЬ',ex+r*.5,ey+r+22);
    let hr=((12+(o.m-Math.PI)/(2*Math.PI)*24)%24+24)%24;sl.value=hr;const hh=Math.floor(hr),mm=Math.floor((hr-hh)*6)*10;
    const ph=hr<5.5||hr>=18.5?'🌙 ночь':hr<7?'🌅 утро, восход Солнца':hr<17?'☀️ день':'🌇 вечер, закат';
    o.info.innerHTML=`В Ташкенте сейчас: <b>${ph}</b> (около ${hh}:${String(mm).padStart(2,'0')}).<br><small style="color:var(--muted)">Вид сверху, со стороны Северного полюса. Земля вращается против часовой стрелки. Время показано примерно.</small>`;
@@ -230,10 +231,10 @@ const DEMOS={
    const earth=()=>{const dx=cx-ex,dy=cy-ey,l=Math.hypot(dx,dy);drawPlanet(c,P('earth'),ex,ey,er,dx/l,dy/l);
     const a=o.tilt?23.4*Math.PI/180:0,ax=Math.sin(a),ay=-Math.cos(a);c.strokeStyle='#fff';c.lineWidth=2.5;c.beginPath();c.moveTo(ex-ax*er*1.7,ey-ay*er*1.7);c.lineTo(ex+ax*er*1.7,ey+ay*er*1.7);c.stroke();
     c.strokeStyle='rgba(255,255,255,.5)';c.lineWidth=1;c.beginPath();c.moveTo(ex-ay*er,ey+ax*er);c.lineTo(ex+ay*er,ey-ax*er);c.stroke();
-    c.fillStyle='#fff';c.font='600 14px Roboto';c.textAlign='center';c.fillText('С',ex+ax*er*1.7*1.25,ey+ay*er*1.7*1.25-2);
+    c.fillStyle='#fff';c.font='600 16px Roboto';c.textAlign='center';c.fillText('С',ex+ax*er*1.7*1.25,ey+ay*er*1.7*1.25-2);
     const ux=ex+ax*er*.55+(-ay)*0,uy=ey+ay*er*.55;c.fillStyle='#ffcf5a';c.beginPath();c.arc(ux,uy,3.5,0,7);c.fill();};
    if(ey<cy)earth();drawSun(c,cx,cy,H*.11);if(ey>=cy)earth();
-   c.fillStyle='#ffcf5a';c.font='600 16px Roboto';c.textAlign='center';c.fillText(M[Math.floor(o.mo)],ex,ey+er+26);
+   c.fillStyle='#ffcf5a';c.font='600 18px Roboto';c.textAlign='center';c.fillText(M[Math.floor(o.mo)],ex,ey+er+26);
    const tw=-Math.cos(f);let s=['зима','зима','весна','весна','весна','лето','лето','лето','осень','осень','осень','зима'][Math.floor(o.mo)];
    let t;if(!o.tilt)t='Без наклона оси Солнце освещало бы оба полушария одинаково весь год. Времён года почти не было бы!';
    else if(tw>.55)t='Северный полюс наклонён <b>к Солнцу</b>. В Узбекистане лучи падают круче, день длинный — тепло.';
@@ -245,34 +246,34 @@ const DEMOS={
  moon(){const o=demoBox(.5,400);o.p=Math.PI+.6;o.run=false;
   const sl=slider(0,100,.1,10,v=>{o.p=Math.PI+v/100*2*Math.PI;o.dirty=true;});o.ctrl.append(playBtn(o),h('span',null,'Луна:'),sl);o.run=false;o.playB.textContent='▶ Пуск';
   o.tick=dt=>{if(o.run)o.p+=dt*.5;};
-  const cv=o.cv;let drag=false;const setP=e=>{const r=cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;if(x>o.w*.62)return;o.p=Math.atan2(-(y-o.h/2),x-o.w*.32);o.dirty=true;};
+  const cv=o.cv;cv.classList.add('grab');let drag=false;const setP=e=>{const r=cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;if(x>o.w*.62)return;o.p=Math.atan2(-(y-o.h/2),x-o.w*.32);o.dirty=true;};
   cv.addEventListener('pointerdown',e=>{drag=true;cv.setPointerCapture(e.pointerId);setP(e);});cv.addEventListener('pointermove',e=>{if(drag)setP(e);});cv.addEventListener('pointerup',()=>drag=false);
   o.draw=()=>{const {c,w:W,h:H}=o;c.clearRect(0,0,W,H);const ex=W*.32,ey=H/2,R=Math.min(H*.36,W*.22);
-   c.strokeStyle=c.fillStyle='rgba(255,210,110,.6)';c.lineWidth=1.5;for(let i=-2;i<=2;i++)arrow(c,6,ey+i*H*.18,40,ey+i*H*.18);c.font='13px Roboto';c.textAlign='left';c.fillText('свет Солнца',6,22);
+   c.strokeStyle=c.fillStyle='rgba(255,210,110,.6)';c.lineWidth=1.5;for(let i=-2;i<=2;i++)arrow(c,6,ey+i*H*.18,40,ey+i*H*.18);c.font='15px Roboto';c.textAlign='left';c.fillText('свет Солнца',6,22);
    c.strokeStyle='rgba(150,180,255,.35)';c.beginPath();c.arc(ex,ey,R,0,7);c.stroke();drawPlanet(c,P('earth'),ex,ey,H*.07,-1,0);
    const mx=ex+Math.cos(o.p)*R,my=ey-Math.sin(o.p)*R,mr=H*.04;
    c.setLineDash([4,5]);c.strokeStyle='rgba(255,255,255,.35)';c.beginPath();c.moveTo(ex,ey);c.lineTo(mx,my);c.stroke();c.setLineDash([]);
-   drawPlanet(c,MOON,mx,my,mr,-1,0);c.fillStyle='#fff';c.font='14px Roboto';c.textAlign='center';c.fillText('Луна',mx,my-mr-6);
+   drawPlanet(c,MOON,mx,my,mr,-1,0);c.fillStyle='#fff';c.font='16px Roboto';c.textAlign='center';c.fillText('Луна',mx,my-mr-6);
    c.fillStyle='#a9b4d6';c.fillText('вид сверху (не в масштабе)',ex,H-10);
    c.strokeStyle='rgba(255,255,255,.15)';c.beginPath();c.moveTo(W*.64,10);c.lineTo(W*.64,H-10);c.stroke();
    const th=((o.p-Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI),dx=W*.82,dy=H/2-8,r=Math.min(H*.32,W*.15),cs=Math.cos(th);
    c.save();c.translate(dx,dy);c.save();c.beginPath();c.arc(0,0,r,0,7);c.clip();c.drawImage(tex(MOON),-r,-r,2*r,2*r);c.fillStyle='rgba(5,8,20,.86)';c.fillRect(-r,-r,2*r,2*r);c.restore();
    c.beginPath();if(th<Math.PI){c.arc(0,0,r,-Math.PI/2,Math.PI/2,false);c.ellipse(0,0,Math.abs(r*cs),r,0,Math.PI/2,-Math.PI/2,cs>0);}else{c.arc(0,0,r,Math.PI/2,3*Math.PI/2,false);c.ellipse(0,0,Math.abs(r*cs),r,0,-Math.PI/2,Math.PI/2,cs>0);}
    c.save();c.clip();c.drawImage(tex(MOON),-r,-r,2*r,2*r);c.restore();c.restore();
-   c.fillStyle='#fff';c.font='14px Roboto';c.textAlign='center';c.fillText('так её видно с Земли',dx,H-10);
+   c.fillStyle='#fff';c.font='16px Roboto';c.textAlign='center';c.fillText('так её видно с Земли',dx,H-10);
    const dg=th*180/Math.PI,name=dg<10||dg>350?'новолуние (Луну почти не видно)':dg<80?'растущий серп':dg<100?'первая четверть':dg<170?'растущая Луна':dg<190?'полнолуние':dg<260?'убывающая Луна':dg<280?'последняя четверть':'убывающий серп';
    sl.value=th/(2*Math.PI)*100;
    o.info.innerHTML=`Фаза: <b>${name}</b>. Видно освещённой части: ${Math.round((1-cs)/2*100)}%.<br><small style="color:var(--muted)">Перетащи Луну пальцем по орбите или двигай ползунок. Солнце всегда освещает половину Луны — посмотри на неё сверху. Вид фаз — как из Северного полушария.</small>`;
    if(dg>170&&dg<190)doneTask('t_full');};
   return o.el;},
  starColors(){const o=demoBox(.32,240);const L=[['255,110,80','красная','≈3 000 °C'],['255,170,90','оранжевая','≈4 000 °C'],['255,230,140','жёлтая (Солнце)','≈5 500 °C'],['245,245,255','белая','≈8 000 °C'],['150,190,255','голубая','10 000 °C и больше']];
-  o.draw=()=>{const {c,w:W,h:H}=o;c.clearRect(0,0,W,H);const sp=W/L.length;L.forEach(([col,n,t],i)=>{const x=sp*(i+.5),y=H*.4,r=Math.min(sp*.18,H*.16);const g=c.createRadialGradient(x,y,0,x,y,r*2.8);g.addColorStop(0,`rgba(${col},1)`);g.addColorStop(.35,`rgba(${col},.7)`);g.addColorStop(1,`rgba(${col},0)`);c.fillStyle=g;c.beginPath();c.arc(x,y,r*2.8,0,7);c.fill();c.fillStyle='#fff';c.beginPath();c.arc(x,y,r*.55,0,7);c.fill();c.font='600 15px Roboto';c.textAlign='center';c.fillText(n,x,H*.8);c.fillStyle='#a9b4d6';c.font='13px Roboto';c.fillText(t,x,H*.8+18);});};
+  o.draw=()=>{const {c,w:W,h:H}=o;c.clearRect(0,0,W,H);const sp=W/L.length;L.forEach(([col,n,t],i)=>{const x=sp*(i+.5),y=H*.4,r=Math.min(sp*.18,H*.16);const g=c.createRadialGradient(x,y,0,x,y,r*2.8);g.addColorStop(0,`rgba(${col},1)`);g.addColorStop(.35,`rgba(${col},.7)`);g.addColorStop(1,`rgba(${col},0)`);c.fillStyle=g;c.beginPath();c.arc(x,y,r*2.8,0,7);c.fill();c.fillStyle='#fff';c.beginPath();c.arc(x,y,r*.55,0,7);c.fill();c.font='600 17px Roboto';c.textAlign='center';c.fillText(n,x,H*.8);c.fillStyle='#a9b4d6';c.font='15px Roboto';c.fillText(t,x,H*.8+18);});};
   o.info.innerHTML='Температура поверхности звёзд примерная. Чем горячее звезда, тем она «голубее».';return o.el;},
  galaxy(){const o=demoBox(.56,420);o.a=0;
   o.tick=dt=>{o.a+=dt*.03;};
   o.draw=()=>{const {c,w:W,h:H}=o;c.clearRect(0,0,W,H);const m=Math.min(W,H*1.6),cx=W/2,cy=H/2;c.save();c.translate(cx,cy);c.scale(1,.6);c.rotate(o.a);c.drawImage(galaxyTex(),-m/2,-m/2,m,m);c.restore();
-   const sa=2.3+o.a,sr=m*.3,px=cx+Math.cos(sa)*sr,py=cy+Math.sin(sa)*sr*.6;c.strokeStyle='#ffcf5a';c.lineWidth=2;c.beginPath();c.arc(px,py,9,0,7);c.stroke();c.fillStyle='#ffcf5a';c.font='600 16px Roboto';c.textAlign='center';c.fillText('Солнце (примерно здесь)',px,py-16);
-   c.fillStyle='#fff';c.font='14px Roboto';c.fillText('центр галактики',cx,cy+30);};
+   const sa=2.3+o.a,sr=m*.3,px=cx+Math.cos(sa)*sr,py=cy+Math.sin(sa)*sr*.6;c.strokeStyle='#ffcf5a';c.lineWidth=2;c.beginPath();c.arc(px,py,9,0,7);c.stroke();c.fillStyle='#ffcf5a';c.font='600 18px Roboto';c.textAlign='center';c.fillText('Солнце (примерно здесь)',px,py-16);
+   c.fillStyle='#fff';c.font='16px Roboto';c.fillText('центр галактики',cx,cy+30);};
   o.info.innerHTML='Рисунок условный: снаружи нашу галактику никто не фотографировал. Учёные знают её форму по наблюдениям изнутри. В центре — сверхмассивная чёрная дыра Стрелец A*.';return o.el;},
  comet(){const o=demoBox(.45,340);o.a=0;
   o.tick=dt=>{const W=o.w,rx=W*.42;const dist=Math.hypot(Math.cos(o.a)*rx+rx*.8,Math.sin(o.a)*o.h*.3);o.a+=dt*60/Math.max(40,dist);};
@@ -281,7 +282,7 @@ const DEMOS={
    const x=cx+Math.cos(o.a)*rx,y=sy+Math.sin(o.a)*ry,dx=x-sx,dy=y-sy,l=Math.hypot(dx,dy),len=Math.max(10,(1-l/(rx*1.8))*W*.35);
    const g=c.createLinearGradient(x,y,x+dx/l*len,y+dy/l*len);g.addColorStop(0,'rgba(190,230,255,.85)');g.addColorStop(1,'rgba(190,230,255,0)');c.strokeStyle=g;c.lineCap='round';
    for(let k=-1;k<=1;k++){c.lineWidth=k?3:7;c.beginPath();c.moveTo(x,y);c.lineTo(x+dx/l*len-dy/l*k*len*.12,y+dy/l*len+dx/l*k*len*.12);c.stroke();}
-   c.fillStyle='#eaf6ff';c.beginPath();c.arc(x,y,5,0,7);c.fill();c.fillStyle='#fff';c.font='14px Roboto';c.textAlign='center';c.fillText('комета',x,y-12);};
+   c.fillStyle='#eaf6ff';c.beginPath();c.arc(x,y,5,0,7);c.fill();c.fillStyle='#fff';c.font='16px Roboto';c.textAlign='center';c.fillText('комета',x,y-12);};
   o.info.innerHTML='Посмотри: хвост всегда смотрит <b>от Солнца</b> и становится длиннее, когда комета подлетает ближе. Размеры и орбита условные.';return o.el;},
  blackhole(){const o=demoBox(.45,320);o.a=0;o.tick=dt=>{o.a+=dt*.4;};
   o.draw=()=>{const {c,w:W,h:H}=o;c.clearRect(0,0,W,H);const cx=W/2,cy=H/2,r=H*.2;
@@ -294,7 +295,7 @@ const DEMOS={
 
 // ---------- викторина ----------
 let Q=null;
-function openQuiz(id){const s=SECTIONS.find(x=>x.id===id);Q={s,i:0,first:0,miss:false};$('#quiz').classList.remove('hidden');qShow();}
+function openQuiz(id){const s=id==='exam'?makeExam():SECTIONS.find(x=>x.id===id);Q={s,i:0,first:0,miss:false};$('#quiz').classList.remove('hidden');qShow();}
 function closeQuiz(){$('#quiz').classList.add('hidden');Q=null;if(cur==='page')renderSection(curArg);}
 function qShow(){const box=$('#quiz'),{s,i}=Q,q=s.quiz[i];Q.miss=false;box.innerHTML='';const b=h('div','qbox');box.appendChild(b);
  const top=h('div','row');top.style.justifyContent='space-between';top.appendChild(h('span','tag',`${s.icon} ${s.title} · вопрос ${i+1} из ${s.quiz.length}`));top.appendChild(btn('✕','sec',closeQuiz));b.appendChild(top);
@@ -303,17 +304,17 @@ function qShow(){const box=$('#quiz'),{s,i}=Q,q=s.quiz[i];Q.miss=false;box.inner
   if(k===q.c){op.querySelectorAll('button').forEach(x=>x.disabled=true);o.classList.add('ok');if(!Q.miss)Q.first++;ex.className='expl good';ex.innerHTML='✅ <b>Верно!</b> '+q.e;
    const last=i===s.quiz.length-1;const nb=btn(last?'Завершить 🎉':'Следующий вопрос ▶','gold',()=>{if(last)qEnd();else{Q.i++;qShow();}});nb.style.marginTop='14px';ex.appendChild(h('br'));ex.appendChild(nb);}
   else{Q.miss=true;o.disabled=true;o.classList.add('no');ex.className='expl';ex.innerHTML='🤔 <b>Не совсем.</b> '+q.e+'<br>Попробуй выбрать ещё раз!';}};op.appendChild(o);});}
-function qEnd(){const {s}=Q;const was=S.quizzes[s.id];S.quizzes[s.id]=1;save();const b=$('#quiz');b.innerHTML='';const q=h('div','qbox');b.appendChild(q);
+function qEnd(){const {s}=Q;const was=S.quizzes[s.id];S.quizzes[s.id]=1;save();if(s.id==='exam')doneTask('t_exam');const b=$('#quiz');b.innerHTML='';const q=h('div','qbox');b.appendChild(q);
  q.innerHTML=`<div style="text-align:center"><div style="font-size:72px">⭐</div><h2>Викторина пройдена!</h2><p>Раздел «${s.title}»${was?'':': ты получил новый значок'}.<br>С первой попытки: ${Q.first} из ${s.quiz.length}. Каждая ошибка — тоже шаг к знаниям!</p></div>`;
  const r=h('div','row');r.style.justifyContent='center';r.appendChild(btn('Ещё раз','sec',()=>openQuiz(s.id)));r.appendChild(btn('Готово','gold',closeQuiz));q.appendChild(r);}
 
 // ---------- прогресс и раздел для родителей ----------
 function renderProgress(){const v=$('#v-progress');v.innerHTML='';v.classList.add('on');v.scrollTop=0;const w=h('div','wrap');v.appendChild(w);
- const np=PLANETS.filter(p=>S.planets[p.id]).length,ns=SECTIONS.filter(s=>S.sections[s.id]).length,nq=SECTIONS.filter(s=>S.quizzes[s.id]).length,nt=TASKS.filter(t=>S.tasks[t.id]).length;
- const pts=np+ns+nq*2+nt,R=[[0,'Начинающий исследователь'],[6,'Юный наблюдатель'],[14,'Исследователь космоса'],[24,'Астроном'],[34,'Капитан звёздной экспедиции']];const rank=R.filter(x=>pts>=x[0]).pop()[1];
- w.appendChild(h('h2',null,'🏅 Мой прогресс'));w.appendChild(h('div','blk',`<p style="font-size:22px">Звание: <b>${rank}</b></p>`+[['Небесные тела изучено',np,PLANETS.length],['Разделов прочитано',ns,6],['Викторин пройдено',nq,6],['Заданий выполнено',nt,TASKS.length]].map(([a,b,c])=>`${a}: <b>${b} из ${c}</b><div class="bar"><i style="width:${b/c*100}%"></i></div>`).join('')));
- w.appendChild(h('h3',null,'Значки'));const bd=h('div','badges');SECTIONS.forEach(s=>bd.appendChild(h('div','badge'+(S.quizzes[s.id]?'':' off'),`<span class="e">${s.icon}</span>${s.title}`)));
- bd.appendChild(h('div','badge'+(np===9?'':' off'),'<span class="e">🪐</span>Все планеты и Солнце'));bd.appendChild(h('div','badge'+(nt===TASKS.length?'':' off'),'<span class="e">🔭</span>Все задания'));w.appendChild(bd);
+ const QS=SECTIONS.filter(s=>s.quiz),np=PLANETS.filter(p=>S.planets[p.id]).length,ns=SECTIONS.filter(s=>S.sections[s.id]).length,nq=QS.filter(s=>S.quizzes[s.id]).length,nt=TASKS.filter(t=>S.tasks[t.id]).length;
+ const pts=np+ns+nq*2+nt,R=[[0,'Начинающий исследователь'],[8,'Юный наблюдатель'],[18,'Исследователь космоса'],[30,'Астроном'],[42,'Космонавт-исследователь'],[54,'Командир звёздной экспедиции']];const ri=R.filter(x=>pts>=x[0]).length-1,rank=R[ri][1],nx=R[ri+1];
+ w.appendChild(h('h2',null,'🏅 Мой прогресс'));w.appendChild(h('div','blk',`<p style="font-size:22px">Звание: <b>${rank}</b>${nx?`<br><small style="color:var(--muted);font-size:16px">До звания «${nx[1]}» осталось ${nx[0]-pts} оч.</small>`:''}</p>`+[['Небесные тела изучено',np,PLANETS.length],['Разделов прочитано',ns,SECTIONS.length],['Викторин пройдено',nq,QS.length],['Заданий выполнено',nt,TASKS.length]].map(([a,b,c])=>`${a}: <b>${b} из ${c}</b><div class="bar"><i style="width:${b/c*100}%"></i></div>`).join('')));
+ w.appendChild(h('h3',null,'Значки'));const bd=h('div','badges');QS.forEach(s=>bd.appendChild(h('div','badge'+(S.quizzes[s.id]?'':' off'),`<span class="e">${s.icon}</span>${s.title}`)));
+ [[np===PLANETS.length,'🪐','Все планеты и Солнце'],[S.tasks.t_lander,'🦅','Пилот лунного модуля'],[S.tasks.t_stage,'🛰️','Инженер ракет'],[S.quizzes.exam,'🏆','Большая викторина'],[nt===TASKS.length,'🔭','Все задания']].forEach(([ok,e,t])=>bd.appendChild(h('div','badge'+(ok?'':' off'),`<span class="e">${e}</span>${t}`)));w.appendChild(bd);
  w.appendChild(h('h3',null,'Исследовательские задания'));const ul=h('ul','tasks');TASKS.forEach(t=>ul.appendChild(h('li',S.tasks[t.id]?'done':'',`<span class="c">${S.tasks[t.id]?'✅':'🔭'}</span><div>${t.text}<small>${S.tasks[t.id]?'Выполнено!':'Подсказка: '+t.hint}</small></div>`)));w.appendChild(ul);
  w.appendChild(h('h3',null,'Настройки'));const st=h('div','row');
  const lb=btn('Облегчённая графика: '+(S.lite?'вкл':'выкл'),'sec',()=>{S.lite=!S.lite;save();Object.keys(TEX).forEach(k=>delete TEX[k]);GAL=null;bgInit();renderProgress();});
