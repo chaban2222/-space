@@ -1,0 +1,63 @@
+name: Собрать APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Установить зависимости
+        run: npm install --no-audit --no-fund --legacy-peer-deps
+
+      # Один ключ на все сборки, чтобы новая версия ставилась поверх старой.
+      - name: Ключ подписи
+        run: |
+          mkdir -p tools
+          if [ ! -f tools/app.keystore ]; then
+            keytool -genkeypair -keystore tools/app.keystore -storetype JKS -storepass android -keypass android \
+              -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Kosmos,O=Kids,C=UZ"
+            git config user.name "github-actions"
+            git config user.email "github-actions@users.noreply.github.com"
+            git add tools/app.keystore && git commit -m "Ключ подписи приложения [skip ci]" && git push origin HEAD:${GITHUB_REF_NAME} || echo "ключ не сохранён в репозиторий"
+          fi
+          mkdir -p ~/.android
+          cp tools/app.keystore ~/.android/debug.keystore
+
+      - name: Создать Android-проект
+        run: |
+          npx cap add android
+          npx capacitor-assets generate --android --iconBackgroundColor '#070b1a' --iconBackgroundColorDark '#070b1a' --splashBackgroundColor '#070b1a' --splashBackgroundColorDark '#070b1a' || echo "иконка по умолчанию"
+          sed -i "s/versionCode 1$/versionCode ${GITHUB_RUN_NUMBER}/" android/app/build.gradle
+          npx cap sync android
+
+      - name: Собрать APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Переименовать
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk "Kosmos.apk"
+
+      - name: Выложить APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kosmos-apk
+          path: Kosmos.apk
