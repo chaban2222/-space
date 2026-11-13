@@ -23,7 +23,8 @@
       <button class="rb" id="zOut" aria-label="Отдалить">－</button>
       <button class="rb" id="zFit" aria-label="Показать всё">⤢</button>
     </div>
-    <div class="map-note">Нажми на планету или Солнце. Двигай карту пальцем, приближай двумя пальцами.<br><small>Размеры планет, расстояния и скорости показаны условно, не в масштабе.</small></div>
+    <div class="map-note">Нажми на планету, звезду или галактику. Сведи два пальца — и улетай всё дальше: к звёздам, Млечному Пути и другим галактикам.<br><small id="scaleLbl"></small></div>
+    <div class="lvl" id="lvl"><button>☀️ Солнечная система</button><button>⭐ Соседние звёзды</button><button>🌌 Млечный Путь</button><button>🌀 Другие галактики</button></div>
   </section>
   <section id="v-page" class="view scroll"></section>
   <section id="v-planet" class="view scroll"></section>
@@ -36,7 +37,9 @@
 <div id="toast" class="toast"></div>
 <script src="data.js"></script>
 <script src="data2.js"></script>
+<script src="data3.js"></script>
 <script src="app.js"></script>
 <script src="games.js"></script>
+<script src="universe.js"></script>
 </body>
 </html>
